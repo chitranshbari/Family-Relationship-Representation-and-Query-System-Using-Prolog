@@ -1,0 +1,2 @@
+# Family-Relationship-Representation-and-Query-System-Using-Prolog
+This project demonstrates the use of **Prolog**, a logic programming language, to model and analyze family relationships. The system defines basic family facts such as parent-child relationships and gender, and uses logical rules to derive more complex relationships like father, mother, siblings, grandparents, ancestors, and descendants.   
