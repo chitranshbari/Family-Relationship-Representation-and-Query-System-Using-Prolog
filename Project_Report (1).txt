@@ -1,0 +1,359 @@
+# 📘 Project Report: Kinship Reasoning Engine Using Prolog
+
+---
+
+## 1. 🧾 Title of the Project
+
+**Kinship Reasoning Engine: An Advanced Family Relationship Representation, Inference and Validation System Using Prolog**
+
+---
+
+## 2. 👤 Student Details
+
+* **Name:** Chitransh Bari
+* **Registration Number:** 25MIB10062
+* **Course:** Fundamentals of AI and ML
+
+---
+
+## 3. 📌 Abstract
+
+This project extends a basic Prolog family-relationship program into a complete **kinship reasoning engine**. The basic version could answer simple queries such as parent, sibling, grandparent and ancestor. The advanced version can additionally **identify the exact relationship between any two people** (for example "second cousin", "first cousin once removed", "half-brother" or "great-grandfather"), **explain its answer** by showing the common ancestor and both family paths, **validate its own knowledge base** for logical inconsistencies, and **answer questions typed in English** using a Definite Clause Grammar (DCG).
+
+The knowledge base contains 19 people across four generations, with gender, birth and death years, parents, marriages and a previous marriage. All relationships beyond these base facts are derived through logical rules. The project demonstrates knowledge representation, recursion, search, constraint checking and natural-language parsing, which are core ideas of symbolic Artificial Intelligence.
+
+---
+
+## 4. 🎯 Objectives
+
+* To understand the fundamentals of **logic programming** and symbolic AI
+* To represent real-world family data using **facts and rules**
+* To implement **recursive relationships** such as ancestor and descendant
+* To design an algorithm that **automatically names any blood relationship**
+* To provide **explanations** for inferred answers
+* To build a **validator** that detects inconsistent data
+* To support **natural-language queries** using DCG grammar rules
+* To test the system with an automated **self-test suite**
+
+---
+
+## 5. 🛠️ Tools and Technologies
+
+* **Programming Language:** Prolog
+* **Software:** SWI-Prolog 8.x or newer
+* **Libraries used:** aggregate, apply, lists (all bundled with SWI-Prolog)
+* **Optional:** Graphviz (to render the exported family-tree diagram)
+* **Platform:** Windows / Linux / macOS
+
+---
+
+## 6. 📂 System Description
+
+### 6.1 Project files
+
+| File | Purpose |
+| ---- | ------- |
+| `family_data.pl` | Knowledge base only: people, parents, marriages |
+| `kinship_engine.pl` | All logic: rules, relationship calculator, explainer, validator, grammar, statistics, tests |
+| `basic_family.pl` | The original basic version, kept for comparison |
+| `README.md` | Documentation and usage guide |
+
+Separating data from logic means the family tree can be changed without touching any rule.
+
+### 6.2 Architecture
+
+The system has seven modules:
+
+1. **Knowledge base:** facts about people and their connections
+2. **Basic relations:** father, mother, sibling, grandparent, uncle, aunt, cousin, ancestor and others
+3. **Relationship calculator:** names any relationship between two people
+4. **Explanation facility:** shows why an answer is true
+5. **Integrity validator:** checks data consistency
+6. **Natural-language interface:** DCG grammar for English questions
+7. **Utilities:** statistics, generations, Graphviz export and self-tests
+
+### 6.3 Data model
+
+```prolog
+person(Name, Gender, BirthYear, DeathYear).   % DeathYear = alive if living
+parent(Parent, Child).                         % both parents recorded
+married(A, B).                                 % current marriage
+ex_spouse(A, B).                               % previous marriage
+```
+
+Example facts:
+
+```prolog
+person(harish, male, 1930, 2005).
+person(aarav, male, 2015, alive).
+parent(harish, mohan).   parent(sita, mohan).
+married(harish, sita).
+ex_spouse(kiran, leela).
+```
+
+The facts are declared `dynamic`, so people can be added or removed while the program is running.
+
+### 6.4 The family tree
+
+```
+                 harish == sita
+                       |
+     +-----------------+-------------------+
+     |                 |                   |
+ mohan==meena     radha==vivek      kiran==anita  (ex-wife: leela)
+     |                 |                   |            |
+ arjun==isha,neha  rohan==tina,pooja      dev         sameer
+     |                 |                (sameer is dev's half-brother)
+   aarav             myra
+```
+
+---
+
+## 7. 🧩 Implementation Details
+
+### 7.1 Basic relations
+
+```prolog
+father(X, Y) :- parent(X, Y), male(X).
+mother(X, Y) :- parent(X, Y), female(X).
+grandparent(X, Y) :- parent(X, Z), parent(Z, Y).
+uncle(X, Y) :- parent(Z, Y), sibling(X, Z), male(X).
+aunt(X, Y)  :- parent(Z, Y), sibling(X, Z), female(X).
+cousin(X, Y) :- parent(A, X), parent(B, Y), sibling(A, B), X \== Y.
+```
+
+**Sibling** requires a shared parent and a different person. A helper with a cut (`shares_parent/2`) prevents the same pair being reported once for each shared parent:
+
+```prolog
+sibling(X, Y) :- person(X,_,_,_), person(Y,_,_,_), X \== Y, shares_parent(X, Y).
+shares_parent(X, Y) :- parent(Z, X), parent(Z, Y), !.
+```
+
+**Full and half siblings** are separated by comparing the complete set of parents:
+
+```prolog
+full_sibling(X, Y) :- sibling(X, Y), setof(P, parent(P, X), Ps), setof(P, parent(P, Y), Ps).
+half_sibling(X, Y) :- sibling(X, Y), \+ full_sibling(X, Y).
+```
+
+### 7.2 Recursive relations
+
+```prolog
+ancestor(X, Y) :- parent(X, Y).                 % base case
+ancestor(X, Y) :- parent(X, Z), ancestor(Z, Y). % recursive case
+descendant(X, Y) :- ancestor(Y, X).
+```
+
+### 7.3 Relationship calculator (main novelty)
+
+Every blood relationship is determined by two numbers: how many generations each person is below their **nearest common ancestor**.
+
+**Step 1: find ancestors with distances**
+
+```prolog
+up(X, X, 0).
+up(X, A, N) :- parent(P, X), up(P, A, N0), N is N0 + 1.
+```
+
+**Step 2: find the nearest common ancestor.** `closest_common/5` collects every common ancestor, keeps the pair of distances (Da, Db) with the smallest total, and counts how many ancestors sit at that position. Two ancestors means the link runs through a couple (a **full** relation). One ancestor means a **half** relation.
+
+**Step 3: convert (Da, Db) into a name**
+
+| (Da, Db) | Relationship of X to Y |
+| -------- | ---------------------- |
+| (0, 1) | father / mother |
+| (0, n ≥ 2) | grandparent, great-grandparent, ... |
+| (1, 0) | son / daughter |
+| (n ≥ 2, 0) | grandson, great-grandson, ... |
+| (1, 1) | brother / sister (half- if only one parent shared) |
+| (1, n ≥ 2) | uncle / aunt, great-uncle / aunt |
+| (n ≥ 2, 1) | nephew / niece, great-nephew / niece |
+| (a ≥ 2, b ≥ 2) | cousin: degree = min(a, b) − 1, times removed = \|a − b\| |
+
+**Worked examples**
+
+* aarav and myra are both 3 generations below harish, so (3, 3) gives degree 2 and removed 0: **second cousin**.
+* arjun is 2 generations below harish and myra is 3, so (2, 3) gives degree 1 and removed 1: **first cousin once removed**.
+* sameer and dev share only kiran, so (1, 1) with one common ancestor: **half-brother**.
+
+**Marriage-based relations.** When no blood relation exists, the engine checks spouse, ex-spouse, parent-in-law, child-in-law and sibling-in-law (for example, meena is the **sister-in-law** of radha because meena's husband mohan is radha's brother).
+
+### 7.4 Explanation facility
+
+`explain(X, Y)` prints the relationship, the nearest common ancestor, and the path from that ancestor down to each person, so every answer can be justified.
+
+### 7.5 Integrity validator
+
+`validate/0` collects and reports the following problems:
+
+* a person mentioned in a fact who has no `person/4` record
+* a person with more than two recorded parents
+* a person who died before being born
+* a parent less than 15 years older than a child
+* a parent who died more than a year before the child's birth
+* a **cycle** (a person who is their own ancestor)
+* a warning when married people are close blood relatives
+
+Cycle detection uses a list of already-visited people so the check itself can never loop forever, even on faulty data:
+
+```prolog
+climbs(A, T, Seen) :-
+    parent(P, A),
+    (   P == T -> true
+    ;   \+ memberchk(P, Seen), climbs(P, T, [P|Seen]) ).
+has_cycle(X) :- climbs(X, X, [X]).
+```
+
+The kinship check is skipped when a cycle exists, because computing ancestry on cyclic data would not terminate.
+
+### 7.6 Natural-language interface (DCG)
+
+A Definite Clause Grammar converts English questions into Prolog goals:
+
+```prolog
+question(call(R,X,Y), X) --> [who], be, opt_the, relword(R), [of], person_name(Y).
+question(relationship(A,B,N), N) --> [how, is], person_name(A), [related, to], person_name(B).
+question(age_now(P,Age), Age) --> [how, old, is], person_name(P).
+```
+
+Supported question styles:
+
+* `ask('Who is the aunt of aarav?')`
+* `ask('Who are the children of harish?')`
+* `ask('How is aarav related to myra?')`
+* `ask('How old is mohan?')`
+
+The input is lower-cased, punctuation is removed, the words are split into a list, and `phrase/2` matches the list against the grammar. Only people who exist in the knowledge base are accepted as names.
+
+### 7.7 Generations, ages and statistics
+
+* `generation/2` computes how far a person is from the oldest generation. People with no recorded parents (in-laws) take the generation of their partner, so the whole family lines up correctly.
+* `age_now/2` and `alive_in/2` use birth and death years.
+* `family_stats/0` reports total members, living members, number of generations, the oldest living person and the person with most children.
+* `export_dot/1` writes a Graphviz file with blue/pink boxes for gender, solid arrows for parents and dashed red lines for marriages.
+
+---
+
+## 8. ▶️ Sample Queries and Expected Results
+
+| Query | Description | Expected Result |
+| ----- | ----------- | --------------- |
+| `parent(harish, X)` | Children of Harish | mohan, radha, kiran |
+| `grandparent(X, aarav)` | Aarav's grandparents | mohan, meena |
+| `aunt(X, aarav)` | Aarav's aunt | neha |
+| `cousin(neha, X)` | Neha's cousins | rohan, pooja, sameer, dev |
+| `descendant(X, radha)` | Radha's descendants | rohan, pooja, myra |
+| `half_sibling(dev, X)` | Dev's half-sibling | sameer |
+| `relationship(aarav, myra, N)` | Relationship name | second cousin |
+| `relationship(arjun, myra, N)` | Relationship name | first cousin once removed |
+| `relationship(harish, aarav, N)` | Relationship name | great-grandfather |
+| `relationship(meena, radha, N)` | Relationship name | sister-in-law |
+| `relationship(leela, kiran, N)` | Relationship name | ex-wife |
+| `ask('Who is the aunt of aarav?')` | Natural language | [neha] |
+| `ask('How old is mohan?')` | Natural language | [68] |
+
+### Sample explanation output
+
+```
+?- explain(aarav, myra).
+aarav is the second cousin of myra.
+Nearest common ancestor: harish
+  path to aarav: harish -> mohan -> arjun -> aarav
+  path to myra: harish -> radha -> rohan -> myra
+```
+
+### Sample validation output
+
+```
+?- validate.
+Validation passed: no inconsistencies found.
+
+?- assertz(parent(ghost, dev)), validate.
+1 issue(s) found:
+  - Missing person record: ghost
+```
+
+*(Note: replace the outputs above with screenshots from your own run; see the `screenshots` folder.)*
+
+---
+
+## 9. 🔍 Working Explanation
+
+* The program loads the **knowledge base** from `family_data.pl`.
+* **Rules** derive direct relations such as father, sibling and aunt from the base facts.
+* **Recursion** in `ancestor/2` and `up/3` allows relationships of any depth to be traced.
+* The **relationship calculator** finds the nearest common ancestor of two people, measures the generation distance on each side, and maps the pair of distances to a relationship name.
+* The **explainer** replays the paths so the answer can be checked.
+* The **validator** applies consistency rules to the data and reports violations.
+* The **grammar** converts a typed English question into a Prolog goal, runs it, and prints the answers.
+* Prolog's built-in **unification and backtracking** search through all possibilities, so one predicate can be queried in both directions (for example `parent(harish, X)` and `parent(X, mohan)`).
+
+---
+
+## 10. 🧪 Testing
+
+The built-in `run_tests/0` predicate runs 38 automated checks and prints PASS or FAIL for each:
+
+* 15 checks of basic relations (including empty results such as `uncle(X, aarav)`)
+* 13 checks of the relationship calculator (blood, in-law, ex-spouse and unrelated people)
+* 4 checks of generations and age
+* 2 checks of the natural-language grammar
+* 4 checks of the validator: the base data must be valid, and the validator must detect a deliberately inserted cycle, a missing person and an impossible age gap (the faulty facts are removed again after each check)
+
+---
+
+## 11. 📈 Advantages
+
+* Data and logic are separated, so the tree is easy to change
+* Any blood relationship is named automatically, with no hand-written rule for each case
+* Answers can be explained and justified
+* Faulty data is detected rather than silently producing wrong answers
+* English questions are supported
+* Facts can be added or removed at run time
+* Self-tests make it safe to modify the rules
+* A visual diagram of the tree can be generated
+
+---
+
+## 12. ⚠️ Limitations
+
+* Only two parents per child are expected; adoption and step-parents are not modelled
+* The grammar understands only three question patterns, so it is a demonstration rather than full natural-language processing
+* `relationship/3` reports the closest relationship only, even if two people are related in more than one way
+* Aunts and uncles by marriage (the spouse of a parent's sibling) are not named
+* The dataset is small (19 people)
+* No graphical user interface (only a Graphviz export)
+
+---
+
+## 13. 🚀 Future Enhancements
+
+* Model adoption, step-families and guardianship
+* Add date-aware queries such as "who was alive in 1990?"
+* Load family data from CSV files or a database
+* Extend the grammar to handle more question types and plurals
+* Build a web or desktop front end, possibly connecting Prolog to Python
+* Add probabilistic reasoning, for example for missing or uncertain records
+
+---
+
+## 14. 📌 Conclusion
+
+This project shows that Prolog can go well beyond simple fact lookup. By storing only a small set of base facts and encoding generation-distance logic, the engine derives and names a wide range of relationships, justifies its answers, checks its own data for contradictions and understands basic English questions. It demonstrates knowledge representation, recursion, search with backtracking, constraint checking and grammar-based parsing, and it provides a solid foundation for larger knowledge-based AI systems.
+
+---
+
+## 15. 📚 References
+
+* SWI-Prolog official documentation: https://www.swi-prolog.org/
+* Bratko, I., *Prolog Programming for Artificial Intelligence*
+* Clocksin, W. and Mellish, C., *Programming in Prolog*
+* Lecture notes and study materials of the course
+
+---
+
+## ✅ Acknowledgment
+
+I would like to thank my instructor and institution for providing guidance and resources to complete this project successfully.
+
+---
